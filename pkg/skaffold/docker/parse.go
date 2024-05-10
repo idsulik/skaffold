@@ -74,6 +74,8 @@ type copyCommand struct {
 	startLine int
 	// endLine indiciates the ending line in the dockerfile of the copy command
 	endLine int
+	// hasParentsFlag if the copy command has --parents flag
+	hasParentsFlag bool
 }
 
 var (
@@ -214,7 +216,18 @@ func expandSrcGlobPatterns(workspace string, cpCmds []*copyCommand) ([]FromTo, e
 		for _, p := range cpCmd.srcs {
 			path := filepath.Join(workspace, p)
 			if _, err := os.Stat(path); err == nil {
-				fts = append(fts, FromTo{From: filepath.Clean(p), To: cpCmd.dest, ToIsDir: cpCmd.destIsDir, StartLine: cpCmd.startLine, EndLine: cpCmd.endLine})
+				dest := cpCmd.dest
+				if cpCmd.hasParentsFlag {
+					dest = filepath.Join(dest, filepath.Dir(p))
+				}
+				fromTo := FromTo{
+					From: filepath.Clean(p),
+					To: dest,
+					ToIsDir: cpCmd.destIsDir,
+					StartLine: cpCmd.startLine,
+					EndLine: cpCmd.endLine,
+				}
+				fts = append(fts, fromTo)
 				matchesOne = true
 				continue
 			}
@@ -356,6 +369,7 @@ func readCopyCommand(value *parser.Node, envs []string, workdir string) (*copyCo
 		destIsDir: destIsDir,
 		startLine: value.StartLine,
 		endLine:   value.EndLine,
+		hasParentsFlag: hasParentsFlag(value.Flags),
 	}, nil
 }
 
@@ -461,6 +475,15 @@ func retrieveImage(ctx context.Context, image string, cfg Config) (*v1.ConfigFil
 func hasMultiStageFlag(flags []string) bool {
 	for _, f := range flags {
 		if strings.HasPrefix(f, "--from=") {
+			return true
+		}
+	}
+	return false
+}
+
+func hasParentsFlag(flags []string) bool {
+	for _, f := range flags {
+		if f == "--parents" {
 			return true
 		}
 	}
